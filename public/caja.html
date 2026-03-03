@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Caja - Validar Cupón</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+
+      <img src="img/logo.png" class="logo" alt="Curva La Vaca" />
+
+      <div id="loginBox">
+        <h2>Acceso Caja</h2>
+        <p class="sub">Ingresá contraseña para validar cupones</p>
+
+        <form id="loginForm">
+          <input class="input" type="password" id="password" placeholder="Contraseña" required />
+          <button class="btn" type="submit">Ingresar</button>
+        </form>
+
+        <div id="loginMsg" class="msg"></div>
+      </div>
+
+      <div id="validador" style="display:none;">
+        <h2>Validación de cupón</h2>
+        <p class="sub">Escaneá el QR o escribí el código</p>
+
+        <form id="f">
+          <input class="input" id="codigo" placeholder="Ej: CLV-123456" autocomplete="off" />
+          <button class="btn" type="submit">Validar</button>
+        </form>
+
+        <div id="res" class="msg" style="margin-top:14px;"></div>
+
+        <button id="btnCanjear" class="btn"
+          style="display:none; margin-top:10px; background: var(--accent);"
+          type="button">
+          CANJEAR (marcar como usado)
+        </button>
+
+        <div style="margin-top:20px;">
+          <button id="logout" class="btn" style="background:#444; color:white;">
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  const PASSWORD = "BOCACAPO";
+
+  const loginBox = document.getElementById("loginBox");
+  const validador = document.getElementById("validador");
+  const loginForm = document.getElementById("loginForm");
+  const loginMsg = document.getElementById("loginMsg");
+
+  if (sessionStorage.getItem("cajaAuth") === "ok") {
+    mostrarValidador();
+  }
+
+  loginForm.addEventListener("submit", function(e){
+    e.preventDefault();
+    const pass = document.getElementById("password").value.trim();
+    if (pass === PASSWORD) {
+      sessionStorage.setItem("cajaAuth", "ok");
+      mostrarValidador();
+    } else {
+      loginMsg.textContent = "❌ Contraseña incorrecta";
+    }
+  });
+
+  function mostrarValidador(){
+    loginBox.style.display = "none";
+    validador.style.display = "block";
+    document.getElementById("codigo").focus();
+  }
+
+  document.getElementById("logout").addEventListener("click", ()=>{
+    sessionStorage.removeItem("cajaAuth");
+    location.reload();
+  });
+
+  const f = document.getElementById("f");
+  const input = document.getElementById("codigo");
+  const res = document.getElementById("res");
+  const btnCanjear = document.getElementById("btnCanjear");
+  let ultimoCodigoValido = null;
+
+  async function validar(codigo){
+    res.textContent = "Validando...";
+    btnCanjear.style.display = "none";
+    ultimoCodigoValido = null;
+
+    const r = await fetch(`/api/validar?codigo=${encodeURIComponent(codigo)}`);
+    const data = await r.json();
+
+    if (!data.existe) {
+      res.textContent = "❌ Código inexistente.";
+      return;
+    }
+    if (data.usado) {
+      res.textContent = `⛔ YA USADO. (${data.premio_texto})`;
+      return;
+    }
+
+    res.textContent = `✅ VÁLIDO. Premio: ${data.premio_texto}`;
+    ultimoCodigoValido = codigo;
+    btnCanjear.style.display = "block";
+  }
+
+  f.addEventListener("submit", (e)=>{
+    e.preventDefault();
+    const codigo = input.value.trim();
+    if(!codigo) return;
+    validar(codigo);
+  });
+
+  btnCanjear.addEventListener("click", async ()=>{
+    if(!ultimoCodigoValido) return;
+
+    res.textContent = "Canjeando...";
+    const r = await fetch("/api/canjear", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ codigo: ultimoCodigoValido })
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      res.textContent = `✅ CANJEADO OK. (${data.premio_texto})`;
+      btnCanjear.style.display = "none";
+      input.value = "";
+      input.focus();
+    } else {
+      res.textContent = `⛔ ${data.estado}`;
+      btnCanjear.style.display = "none";
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Encuesta Curva La Vaca</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="brandTop">
+        <img src="img/logo.png" class="logo" alt="Curva La Vaca" />
+        <div class="badge">Encuesta de atención</div>
+      </div>
+
+      <h2>Tu opinión nos ayuda a mejorar</h2>
+      <p class="sub">Tardás 30 segundos. Al final te damos un obsequio 🎁</p>
+
+      <div class="divider"></div>
+
+      <div id="contenido"></div>
+    </div>
+
+    <p class="foot">No acumulable con otras promociones. Válido solo para la próxima visita.</p>
+  </div>
+
+<script>
+  function makeId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "dev-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  const device_id = localStorage.getItem("device_id") || makeId();
+  localStorage.setItem("device_id", device_id);
+
+  function wireStars(root) {
+    const groups = root.querySelectorAll(".stars");
+    groups.forEach(group => {
+      const inputs = group.querySelectorAll('input[type="radio"]');
+      const paint = (val) => {
+        group.querySelectorAll(".star").forEach((lab) => {
+          const v = Number(lab.dataset.v);
+          lab.classList.toggle("on", v <= Number(val));
+        });
+      };
+      inputs.forEach(inp => inp.addEventListener("change", () => paint(inp.value)));
+      const checked = group.querySelector('input[type="radio"]:checked');
+      paint(checked ? checked.value : 0);
+    });
+  }
+
+  function crearEstrellas(name) {
+    return `
+      <div class="stars" data-name="${name}">
+        ${[1,2,3,4,5].map(n => `
+          <label class="star" data-v="${n}" title="${n}">
+            <input type="radio" name="${name}" value="${n}" required />
+            <span aria-hidden="true">★</span>
+          </label>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function crearPregunta(name, label) {
+    return `
+      <div class="q">
+        <label>${label}</label>
+        ${crearEstrellas(name)}
+      </div>
+    `;
+  }
+
+  function mostrarFormulario() {
+    document.getElementById("contenido").innerHTML = `
+      <form id="form">
+        <div class="grid">
+          <div>
+            <label>Nombre</label>
+            <input class="input" placeholder="Tu nombre" name="nombre" required />
+          </div>
+          <div>
+            <label>Teléfono</label>
+            <input
+              class="input"
+              name="telefono"
+              placeholder="Ej: 1123456789"
+              maxlength="10"
+              inputmode="numeric"
+              pattern="[0-9]{8,10}"
+              required
+            />
+          </div>
+        </div>
+
+        ${crearPregunta("atencion", "Atención del personal")}
+        ${crearPregunta("espera", "Tiempo de espera")}
+        ${crearPregunta("comida", "Calidad de la comida")}
+        ${crearPregunta("limpieza", "Limpieza")}
+        ${crearPregunta("precio_calidad", "Relación precio-calidad")}
+
+        <div class="q">
+          <label>¿Nos recomendarías?</label>
+          <div class="choice">
+            <label class="chip">
+              <input type="radio" name="recomendarias" value="SI" required />
+              <span>Sí</span>
+            </label>
+            <label class="chip">
+              <input type="radio" name="recomendarias" value="NO" required />
+              <span>No</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label>¿Qué mejorarías? (opcional)</label>
+          <textarea class="input" name="comentario" placeholder="Ej: más rápido / más caliente / música más baja..."></textarea>
+        </div>
+
+        <button class="btn" type="submit">Enviar y obtener obsequio</button>
+        <div id="msg" class="msg"></div>
+      </form>
+    `;
+
+    wireStars(document.getElementById("contenido"));
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById("msg");
+      msg.textContent = "Enviando...";
+
+      const data = Object.fromEntries(new FormData(e.target));
+      data.device_id = device_id;
+
+      try {
+        const res = await fetch("/guardar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        const r = await res.json();
+        if (!res.ok) {
+          msg.textContent = r.error || "Error al guardar.";
+          return;
+        }
+
+        mostrarPremio(r.premio_texto, r.codigo, r.already);
+      } catch {
+        msg.textContent = "Error de conexión.";
+      }
+    });
+  }
+
+  function mostrarPremio(premio_texto, codigo, repetido) {
+    document.getElementById("contenido").innerHTML = `
+      <div class="resultado">
+        <h3>${repetido ? "✅ Ya participaste hoy. Este es tu obsequio:" : "✅ ¡Gracias por participar! Te obsequiamos:"}</h3>
+
+        <div class="premio">${premio_texto}</div>
+
+        <div class="qrBox">
+          <img class="qr" src="/qr/${encodeURIComponent(codigo)}" alt="QR Cupón" />
+          <div class="codeText">${codigo}</div>
+        </div>
+
+        <p class="small">Mostralo en caja en tu próxima visita.</p>
+        <p class="small2">No acumulable con otras promociones. Válido solo para la próxima visita.</p>
+      </div>
+    `;
+  }
+
+  (async function init() {
+    try {
+      const res = await fetch(`/check?device_id=${encodeURIComponent(device_id)}`);
+      const r = await res.json();
+      if (r.found) return mostrarPremio(r.premio_texto, r.codigo, true);
+    } catch {}
+    mostrarFormulario();
+  })();
+</script>
+</body>
+</html>
