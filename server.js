@@ -219,7 +219,9 @@ app.get("/admin", (req, res) => {
     res.json(rows);
   });
 });
-
+app.get("/export", (req, res) => {
+  res.redirect("/export.xlsx");
+});
 // --- Export Excel (incluye device_id) ---
 app.get("/export.xlsx", async (req, res) => {
   db.all(
